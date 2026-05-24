@@ -1,0 +1,53 @@
+# Jarvis config — /ext/apps_data/jarvis/config.txt
+#
+# Format:
+#   room:<id>:<name>      starts a new room (id = device_id sent in RF packet)
+#   cmd:<id>:<name>       adds a command to the room above it (id = command_id)
+#
+# IDs are 0-255 and must match what the gateway/HA side expects.
+# Names can be up to 23 characters. Blank lines and # comments are ignored.
+#Summary:
+#
+#┌───────────────────┬─────────────┬──────────────┐
+#│       Limit       │ Current cap │ Protocol max │
+#├───────────────────┼─────────────┼──────────────┤
+#│ Rooms             │ 16          │ 256          │
+#├───────────────────┼─────────────┼──────────────┤
+#│ Commands per room │ 24          │ 256          │
+#├───────────────────┼─────────────┼──────────────┤
+#│ RAM used          │ ~10 KB      │ —            │
+#└───────────────────┴─────────────┴──────────────┘
+#
+
+room:0:Living Room
+cmd:0:Lights On
+cmd:1:Lights Off
+cmd:2:Dim Up
+cmd:3:Dim Down
+cmd:4:Fan On
+cmd:5:Fan Off
+
+room:1:Bedroom
+cmd:0:Lights On
+cmd:1:Lights Off
+cmd:2:Dim Up
+cmd:3:Dim Down
+cmd:4:Fan On
+cmd:5:Fan Off
+
+room:2:Kitchen
+cmd:0:Lights On
+cmd:1:Lights Off
+cmd:2:Extractor On
+cmd:3:Extractor Off
+
+room:3:Front Door
+cmd:0:Lock
+cmd:1:Unlock
+cmd:2:Open
+
+room:4:Garden
+cmd:0:Lights On
+cmd:1:Lights Off
+cmd:2:Sprinkler On
+cmd:3:Sprinkler Off

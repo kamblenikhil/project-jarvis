@@ -1,0 +1,19 @@
+# Secrets
+gateway/jarvis-gateway.env
+
+# Build artifacts
+esp32/build/
+esp32/managed_components/
+flipper/dist/
+flipper/.vscode/
+
+# Python
+gateway/venv/
+__pycache__/
+*.pyc
+
+# Flipper SD card runtime files
+*.bin
+
+# OS
+.DS_Store

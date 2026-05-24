@@ -1,0 +1,18 @@
+[Unit]
+Description=Jarvis Sub-GHz gateway (ESP32 → MQTT → Home Assistant)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=youruser
+WorkingDirectory=/home/youruser/jarvis_gateway
+EnvironmentFile=-/home/youruser/jarvis_gateway/jarvis-gateway.env
+ExecStart=/home/youruser/jarvis_gateway/venv/bin/python /home/youruser/jarvis_gateway/gateway.py
+Restart=always
+RestartSec=3
+
+# Hardening
+
+[Install]
+WantedBy=multi-user.target

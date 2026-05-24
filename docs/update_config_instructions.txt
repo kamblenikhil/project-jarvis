@@ -1,0 +1,67 @@
+Jarvis — How to Update Rooms and Commands
+==========================================
+
+Edit the config file
+--------------------
+Open and edit:
+    ~/flipper/jarvis/sdcard/config.txt
+
+Format:
+    room:<id>:<name>
+    cmd:<id>:<name>
+    cmd:<id>:<name>
+    ...
+
+Rules:
+  - IDs are numbers 0-255
+  - Names can be up to 23 characters
+  - Each room must have at least one command
+  - Room IDs and command IDs must stay consistent with Home Assistant automations
+  - Renaming is safe — IDs are what the RF packet carries, not names
+  - Adding a new ID requires a matching HA automation before it will do anything
+
+
+Push config to Flipper
+----------------------
+    python3 ~/flipper/upload_config.py
+
+Then relaunch the Jarvis app on the Flipper:
+  - It will auto-launch via the script, or
+  - Open it manually: Apps > Sub-GHz > Jarvis
+
+
+Sync config to gateway
+----------------------
+    cp ~/flipper/jarvis/sdcard/config.txt ~/jarvis_gateway/config.txt
+
+No restart needed — the gateway detects the file change and reloads automatically.
+
+
+Add Home Assistant automations (only when adding new commands)
+--------------------------------------------------------------
+For each new command, create an automation in HA:
+  - Trigger: MQTT topic  jarvis/event/<room_slug>/<cmd_slug>
+  - Slugs are lowercase, spaces replaced with underscores
+  - Example: room "Bedroom", command "Light 1 On" → jarvis/event/bedroom/light_1_on
+
+In HA go to: Settings → Automations → + Create Automation → Edit in YAML
+Paste (one at a time, no leading dash):
+
+    alias: "Jarvis - <Room> <Command>"
+    trigger:
+      - platform: mqtt
+        topic: jarvis/event/<room_slug>/<cmd_slug>
+    action:
+      - service: <service>
+        target:
+          entity_id: <entity_id>
+    mode: single
+
+
+Summary checklist
+-----------------
+[ ] Edit  ~/flipper/jarvis/sdcard/config.txt
+[ ] Run   python3 ~/flipper/upload_config.py
+[ ] Relaunch Jarvis app on Flipper (Apps > Sub-GHz > Jarvis)
+[ ] Run   cp ~/flipper/jarvis/sdcard/config.txt ~/jarvis_gateway/config.txt
+[ ] Add HA automation for each new command (renames don't need this)

@@ -1,0 +1,13 @@
+App(
+    appid="jarvis",
+    name="Jarvis",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="jarvis_app",
+    cdefines=["APP_JARVIS"],
+    requires=["gui", "subghz", "storage"],
+    stack_size=8 * 1024,
+    fap_icon="icon.png",
+    fap_category="Sub-GHz",
+    sources=["jarvis.c", "subghz_tx.c", "jarvis_crypto.c"],
+    fap_libs=["subghz"],
+)

@@ -1,52 +1,54 @@
-# Jarvis
+# Project Jarvis
 
-A custom home automation pipeline that lets a Flipper Zero control Home Assistant via encrypted Sub-GHz RF.
+> Home Automation — Flipper Zero
 
 ```
-Flipper Zero  →  433MHz RF (AES-256-GCM)  →  ESP32-C6 + CC1101  →  USB Serial  →  Gateway  →  MQTT  →  Home Assistant
+Flipper Zero ──[Sub-GHz RF]──► ESP32-C6 + CC1101 ──[USB Serial]──► gateway.py ──[MQTT]──► Home Assistant
 ```
+<img width="202" height="360" alt="flipper_demo" src="https://github.com/user-attachments/assets/8e27edc9-f112-4fd2-aa84-a33232c99617" />
+
+📖 **Full build writeup:** [Substack](https://nikhilkamble.substack.com/p/flipper-home-automation)
+
+---
 
 ## How it works
 
-A Flipper Zero runs a custom app with a menu of rooms and commands. Pressing a button encrypts the command into a 15-byte packet using AES-256-GCM and transmits it at 433.92MHz. An ESP32-C6 with a CC1101 module receives the packet, verifies the authentication tag, and prints the decoded event over USB serial. A Python gateway daemon reads those events and publishes them to MQTT, where Home Assistant picks them up and triggers automations.
+A Flipper Zero runs a custom app with a scrollable menu of rooms and commands. Pressing a button encrypts the selection into a fixed-length packet using AES-256-GCM and transmits it over Sub-GHz RF. An ESP32-C6 with a CC1101 module receives the packet, verifies the authentication tag, checks the rolling counter for replay attacks, and prints the decoded event over USB serial. A Python gateway reads those events and publishes them to MQTT, where Home Assistant triggers automations.
 
-Rooms and commands are defined in a config file on the Flipper's SD card — no reflash needed to add or rename anything.
+---
+
+## Security model
+
+- **Cipher:** AES-256-GCM — confidentiality and authentication in a single pass
+- **Replay protection:** Rolling uint32 counter used as the GCM IV; receiver rejects any packet with a counter at or below the last accepted value
+- **Authentication:** Truncated GCM tag on every packet — no packet is accepted without passing MAC verification
+- **Counter persistence:** Counter is written to the Flipper SD card after every transmission to survive app restarts
+
+> ⚠️ The shared AES key must be generated independently and embedded at build time. **Never commit your key.** See setup instructions below.
+
+---
 
 ## Hardware
 
-- Flipper Zero
-- ESP32-C6 DevKitC (or similar)
-- CC1101 433MHz SMA module
-- Breadboard + Dupont wires
+| Component | Role |
+|---|---|
+| Flipper Zero | Transmitter — custom app, built-in Sub-GHz radio |
+| ESP32-C6 DevKitC | Receiver host — native USB CDC, hardware AES |
+| CC1101 433 MHz module | Receiver radio — SPI-connected to ESP32-C6 |
 
-**CC1101 wiring (ESP32-C6):**
-
-| CC1101 | ESP32-C6 GPIO |
-|--------|--------------|
-| MISO   | GPIO2        |
-| SCK    | GPIO6        |
-| MOSI   | GPIO7        |
-| CSN    | GPIO10       |
-| GDO0   | GPIO1        |
-| VCC    | 3.3V         |
-| GND    | GND          |
-
-## Security
-
-- AES-256-GCM encryption with a shared 32-byte key
-- 8-byte truncated authentication tag on every packet
-- Rolling counter for replay protection
-- Counter persisted to Flipper SD card across app restarts
+---
 
 ## Repository structure
 
 ```
-flipper/        Flipper Zero app source (ufbt)
-esp32/          ESP32-C6 firmware source (ESP-IDF)
-gateway/        Python gateway daemon + systemd service
-tools/          upload_config.py, monitor.py
-docs/           Config update instructions
+flipper/          Flipper Zero app source (C, ufbt)
+esp32/            ESP32-C6 firmware source (C, ESP-IDF + FreeRTOS)
+gateway/          Python 3 gateway daemon
+tools/            Config upload and serial monitor scripts
+docs/             config guide
 ```
+
+---
 
 ## Setup
 
@@ -56,12 +58,13 @@ docs/           Config update instructions
 head -c 32 /dev/urandom | xxd -i
 ```
 
-Paste the output into `JARVIS_KEY` in both `flipper/jarvis_crypto.c` and `esp32/main/jarvis_crypto.c`. They must match.
+Paste the output into `JARVIS_KEY[]` in **both** `flipper/jarvis_crypto.c` and `esp32/main/jarvis_crypto.c`. The two values must match exactly.
 
-### 2. Flash the ESP32
+### 2. Flash the ESP32-C6
 
 ```bash
 cd esp32
+idf.py set-target esp32c6
 idf.py -p /dev/ttyUSB0 flash
 ```
 
@@ -72,57 +75,67 @@ cd flipper
 ufbt launch
 ```
 
-### 4. Upload the config to the Flipper SD card
+### 4. Define your rooms and commands
 
-Edit `flipper/sdcard/config.txt` with your rooms and commands, then:
+Edit `flipper/sdcard/config.txt` using the format in [`config.txt.example`](flipper/sdcard/config.txt), then upload it:
 
 ```bash
 python3 tools/upload_config.py
 ```
 
+Apply the same room and command IDs to `gateway/config.yaml`. The gateway hot-reloads this file without a restart.
+
 ### 5. Run the gateway
 
 ```bash
-cp gateway/jarvis-gateway.env.example ~/jarvis_gateway/jarvis-gateway.env
-# edit jarvis-gateway.env with your MQTT credentials
+cd gateway
+pip install -r requirements.txt
+cp jarvis-gateway.env.example jarvis-gateway.env
+# Fill in MQTT_HOST, MQTT_USER, MQTT_PASS, SERIAL_PORT
 sudo systemctl enable --now jarvis-gateway
 ```
 
-### 6. Add Home Assistant automations
+### 6. Home Assistant
 
 Subscribe to MQTT topics in the format:
 
 ```
-jarvis/event/<room_slug>/<command_slug>
+jarvis/event/<room>/<command>
 ```
 
-Example for a "Bedroom / Lights On" command:
+Payload is JSON with `room`, `command`, `counter`, and `rssi` fields.
 
-```yaml
-alias: "Jarvis - Bedroom Lights On"
-trigger:
-  - platform: mqtt
-    topic: jarvis/event/bedroom/lights_on
-action:
-  - service: light.turn_on
-    target:
-      entity_id: light.bedroom
-mode: single
-```
+---
 
 ## Config file format
 
 ```
-# room:<id>:<name>
-# cmd:<id>:<name>
-
-room:0:Living Room
-cmd:0:Lights On
-cmd:1:Lights Off
-
-room:1:Bedroom
-cmd:0:Lights On
-cmd:1:Lights Off
+room:<id>:<display_name>
+cmd:<id>:<display_name>
 ```
 
-IDs (0-255) are what the RF packet carries. Names are display labels only — renaming never requires reflashing either side. See `docs/update_config_instructions.txt` for the full update workflow.
+IDs are what the RF packet carries. Names are display labels only — renaming never requires reflashing either side.
+
+---
+
+## License
+
+| Path | License |
+|---|---|
+| `flipper/` | GPL v3 (inherits from Flipper Zero and Momentum firmware) |
+| `esp32/` | GPL v3 |
+| `gateway/` | MIT |
+
+See `LICENSE-GPL` and `LICENSE-MIT`.
+
+---
+
+## References
+
+- [CC1101 Datasheet — TI SWRS061](https://www.ti.com/lit/ds/symlink/cc1101.pdf)
+- [Momentum Firmware — Next-Flip](https://github.com/Next-Flip/Momentum-Firmware)
+- [ESP-IDF — Espressif](https://github.com/espressif/esp-idf)
+- [NIST SP 800-38D — AES-GCM](https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d.pdf)
+- [MQTT v3.1.1 — OASIS](https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html)
+- [Eclipse Mosquitto](https://mosquitto.org)
+- [Home Assistant MQTT integration](https://www.home-assistant.io/integrations/mqtt/)
